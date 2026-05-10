@@ -15,11 +15,20 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        // Static admin login for Mezban Business (change password in production).
+        // Same API as hall owners: POST /api/auth/login { email, password }.
+        User::query()->firstOrCreate(
+            ['email' => 'admin@mezban.com'],
+            [
+                'name' => 'Mezban Admin',
+                'password' => 'password',
+                'role' => 'admin',
+            ]
+        );
     }
 }

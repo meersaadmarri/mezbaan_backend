@@ -1,0 +1,326 @@
+{
+  "info": {
+    "_postman_id": "mezban-api-v1",
+    "name": "Mezban API",
+    "description": "Laravel API for Mezban consumer (mezban), partner & admin (mezban_business).\n\n**Setup:** Create an environment or set collection variables:\n- `baseUrl` — e.g. `http://localhost:8000/api` or `http://192.168.x.x:8000/api`\n- `token` — paste Bearer token from Login / Register response\n\nFolders: **Generic** (no auth), **User** (Sanctum: customer + partner routes), **Admin** (Sanctum + `role: admin`).\n\n**Partner venue registration** (`POST /venues/register`) must be **multipart/form-data** (files: `cnic`, `license`, `live_photo`, optional `photos[]`, `videos[]`). Use the Flutter wizard or build the body in Postman manually.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000/api" },
+    { "key": "token", "value": "" },
+    { "key": "hallId", "value": "1" },
+    { "key": "bookingId", "value": "1" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Generic",
+      "auth": { "type": "noauth" },
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        },
+        {
+          "name": "Register (customer or business)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"customer@example.com\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\",\n  \"role\": \"customer\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register",
+            "description": "Use `role`: `customer` (Mezban app) or `business` (partner). Saves token in response — copy to `token` variable."
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@mezban.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Phone login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+923001234567\",\n  \"name\": \"Guest\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/phone-login"
+          }
+        },
+        {
+          "name": "List halls (approved)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/halls?event=Valima"
+          }
+        },
+        {
+          "name": "Search halls",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/halls/search?q=lahore&event=Valima"
+          }
+        },
+        {
+          "name": "Halls near location",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/halls/near?lat=31.52&lng=74.35&radius_km=50"
+          }
+        },
+        {
+          "name": "Hall detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/halls/{{hallId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "User (customer & partner)",
+      "item": [
+        {
+          "name": "Auth / Me",
+          "item": [
+            {
+              "name": "Me",
+              "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/auth/me" }
+            },
+            {
+              "name": "Update profile",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Name\",\n  \"phone_number\": \"+923001234567\"\n}"
+                },
+                "url": "{{baseUrl}}/auth/profile"
+              }
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{}" },
+                "url": "{{baseUrl}}/auth/logout"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partner venues",
+          "item": [
+            {
+              "name": "Register venue (multipart)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "name", "value": "My Hall", "type": "text" },
+                    { "key": "venue_type", "value": "Marquee", "type": "text" },
+                    { "key": "address", "value": "Main Blvd, Lahore", "type": "text" },
+                    { "key": "city", "value": "Lahore", "type": "text" },
+                    { "key": "capacity_min", "value": "100", "type": "text" },
+                    { "key": "capacity_max", "value": "500", "type": "text" },
+                    { "key": "managed_events", "value": "[\"Valima\",\"Barat / Shaadi\"]", "type": "text" },
+                    { "key": "cnic", "type": "file", "src": "" },
+                    { "key": "license", "type": "file", "src": "" },
+                    { "key": "live_photo", "type": "file", "src": "" }
+                  ]
+                },
+                "url": "{{baseUrl}}/venues/register",
+                "description": "Partner token required. Attach real files for cnic, license, live_photo. Optional: photos[], videos[] as repeated file keys."
+              }
+            },
+            {
+              "name": "My halls",
+              "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/halls/mine" }
+            },
+            {
+              "name": "Create hall (JSON)",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"New Listing\",\n  \"venue_type\": \"Hall\",\n  \"address\": \"City\",\n  \"capacity_min\": 50,\n  \"capacity_max\": 200\n}"
+                },
+                "url": "{{baseUrl}}/halls"
+              }
+            },
+            {
+              "name": "Update hall",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Hall Name\"\n}"
+                },
+                "url": "{{baseUrl}}/halls/{{hallId}}"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings & chat",
+          "item": [
+            {
+              "name": "My bookings (customer)",
+              "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/bookings/mine" }
+            },
+            {
+              "name": "Inbox (partner)",
+              "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/bookings/inbox" }
+            },
+            {
+              "name": "Interest / start inquiry",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hall_id\": 1,\n  \"message\": \"Is this date available?\"\n}"
+                },
+                "url": "{{baseUrl}}/bookings/interest"
+              }
+            },
+            {
+              "name": "Create booking",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hall_id\": 1,\n  \"customer_name\": \"Ali\",\n  \"customer_email\": \"ali@example.com\",\n  \"booking_date\": \"2026-12-15\",\n  \"slot\": \"Dinner\",\n  \"guests\": 150\n}"
+                },
+                "url": "{{baseUrl}}/bookings"
+              }
+            },
+            {
+              "name": "List messages",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/bookings/{{bookingId}}/messages?since_id="
+              }
+            },
+            {
+              "name": "Send message",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"content\": \"Hello from Postman\"\n}" },
+                "url": "{{baseUrl}}/bookings/{{bookingId}}/messages"
+              }
+            },
+            {
+              "name": "Mark messages read",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{}" },
+                "url": "{{baseUrl}}/bookings/{{bookingId}}/read"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List venues",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/admin/venues?status=all" }
+        },
+        {
+          "name": "Pending approvals",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/admin/venues/pending-approvals" }
+        },
+        {
+          "name": "Approve venue",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/admin/venues/{{hallId}}/approve"
+          }
+        },
+        {
+          "name": "Decline venue",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decline_reason\": \"Incomplete documents\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/venues/{{hallId}}/decline"
+          }
+        },
+        {
+          "name": "Suspend venue",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/admin/venues/{{hallId}}/suspend"
+          }
+        },
+        {
+          "name": "Unsuspend venue",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/admin/venues/{{hallId}}/unsuspend"
+          }
+        },
+        {
+          "name": "Update venue status (generic)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"decline_reason\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/venues/{{hallId}}/status"
+          }
+        },
+        {
+          "name": "List bookings",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/admin/bookings?status=all" }
+        }
+      ]
+    }
+  ]
+}

@@ -12,17 +12,21 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed the application's database.
+     * Safe to run multiple times (idempotent).
      */
     public function run(): void
     {
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
-
-        // Static admin login for Mezban Business (change password in production).
-        // Same API as hall owners: POST /api/auth/login { email, password }.
         User::query()->firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => 'password',
+                'role' => 'customer',
+            ]
+        );
+
+        // Admin for Mezban Business app — POST /api/auth/login
+        User::query()->updateOrCreate(
             ['email' => 'admin@mezban.com'],
             [
                 'name' => 'Mezban Admin',

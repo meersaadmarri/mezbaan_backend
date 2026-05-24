@@ -246,7 +246,26 @@ class ApiContractTest extends TestCase
 
         $bookingId = $interest->json('booking_id');
 
-        $this->getJson('/api/bookings/mine')->assertOk()->assertJsonCount(1, 'bookings');
+        $this->getJson('/api/bookings/mine')
+            ->assertOk()
+            ->assertJsonCount(1, 'bookings')
+            ->assertJsonStructure([
+                'bookings' => [
+                    [
+                        'hall' => [
+                            'owner' => [
+                                'id',
+                                'name',
+                                'email',
+                                'phone_number',
+                                'role',
+                                'fcm_token',
+                                'created_at',
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
 
         $this->getJson("/api/bookings/{$bookingId}/messages")
             ->assertOk()
@@ -287,7 +306,24 @@ class ApiContractTest extends TestCase
         ])->assertCreated()->json('booking_id');
 
         Sanctum::actingAs($this->partner);
-        $this->getJson('/api/bookings/inbox')->assertOk()->assertJsonCount(1, 'bookings');
+        $this->getJson('/api/bookings/inbox')
+            ->assertOk()
+            ->assertJsonCount(1, 'bookings')
+            ->assertJsonStructure([
+                'bookings' => [
+                    [
+                        'customer' => [
+                            'id',
+                            'name',
+                            'email',
+                            'phone_number',
+                            'role',
+                            'fcm_token',
+                            'created_at',
+                        ],
+                    ],
+                ],
+            ]);
 
         $other = User::factory()->create(['role' => 'business', 'password' => 'password12345']);
         Sanctum::actingAs($other);

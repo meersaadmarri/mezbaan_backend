@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\UserApi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -10,16 +11,10 @@ use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
-    // ─── Email + password (hall owner, customer, or admin) ──────────────────────
-    // Admin accounts are not self-registered: create in DB/seed (role=admin), then use login.
-    // Hall owners use register (default role business), then the same login endpoint.
-
     /**
      * Register a new user account (Mezban Business hall owner or customer — not admin).
      *
      * POST /api/auth/register
-     * Body: { name, email, password, password_confirmation, phone_number?, role? }
-     * role: optional; "business" (default, hall owner) or "customer".
      */
     public function register(Request $request): JsonResponse
     {
@@ -29,6 +24,10 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
             'phone_number' => 'nullable|string|max:20|unique:users,phone_number',
             'role' => ['nullable', Rule::in(['business', 'customer'])],
+            'fcm_token' => 'nullable|string|min:20|max:512',
+            'platform' => ['nullable', Rule::in(['android', 'ios'])],
+            'app' => ['nullable', Rule::in(['consumer', 'business'])],
+            'firebase_project_id' => 'nullable|string|max:64',
         ]);
 
         $role = $validated['role'] ?? 'business';
@@ -41,30 +40,35 @@ class AuthController extends Controller
             'role' => $role,
         ]);
 
+        if (! empty($validated['fcm_token'])) {
+            UserApi::persistFcmToken($user, $validated['fcm_token'], $request);
+            $user->refresh();
+        }
+
         $token = $user->createToken($this->tokenAbilityName($role))->plainTextToken;
 
         return response()->json([
             'message' => 'Account created successfully.',
-            'user' => $this->userResource($user),
+            'user' => UserApi::array($user),
             'token' => $token,
+            'fcm_token' => $user->fcm_token,
         ], 201);
     }
 
     /**
-     * Login with email + password (hall owner, admin, or customer with a password).
+     * Login with email + password.
      *
      * POST /api/auth/login
-     * POST /api/auth/admin/login (alias — identical)
-     *
-     * Body: { email, password }
-     *
-     * Response includes user.role: use "admin" vs "business" in the client to open the right app shell.
      */
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
+            'fcm_token' => 'nullable|string|min:20|max:512',
+            'platform' => ['nullable', Rule::in(['android', 'ios'])],
+            'app' => ['nullable', Rule::in(['consumer', 'business'])],
+            'firebase_project_id' => 'nullable|string|max:64',
         ]);
 
         $user = User::where('email', $validated['email'])->first();
@@ -75,30 +79,36 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Keep existing tokens so partner phones stay signed in while testing from Postman / another device.
-        // Call POST /auth/logout on each client to revoke that token only.
+        if (! empty($validated['fcm_token'])) {
+            UserApi::persistFcmToken($user, $validated['fcm_token'], $request);
+        }
+
         $token = $user->createToken($this->tokenAbilityName($user->role))->plainTextToken;
+
+        $user->refresh();
 
         return response()->json([
             'message' => 'Logged in successfully.',
-            'user' => $this->userResource($user),
+            'user' => UserApi::array($user),
             'token' => $token,
+            'fcm_token' => $user->fcm_token,
         ]);
     }
-
-    // ─── Customer App ─────────────────────────────────────────────────────────────
 
     /**
      * Login or auto-register a customer by phone number.
      *
      * POST /api/auth/phone-login
-     * Body: { phone_number, name? }
      */
     public function phoneLogin(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'phone_number' => 'required|string|max:20',
             'name' => 'nullable|string|max:100',
+            'fcm_token' => 'nullable|string|min:20|max:512',
+            'platform' => ['nullable', Rule::in(['android', 'ios'])],
+            'app' => ['nullable', Rule::in(['consumer', 'business'])],
+            'firebase_project_id' => 'nullable|string|max:64',
         ]);
 
         $user = User::firstOrCreate(
@@ -109,36 +119,35 @@ class AuthController extends Controller
             ]
         );
 
-        // Always issue a fresh token on login
+        if (! empty($validated['fcm_token'])) {
+            UserApi::persistFcmToken($user, $validated['fcm_token'], $request);
+        }
+
         $user->tokens()->delete();
         $token = $user->createToken('customer_app')->plainTextToken;
 
+        $user->refresh();
+
         return response()->json([
             'message' => 'Logged in successfully.',
-            'user' => $this->userResource($user),
+            'user' => UserApi::array($user),
             'token' => $token,
+            'fcm_token' => $user->fcm_token,
         ]);
     }
 
-    // ─── Shared ───────────────────────────────────────────────────────────────────
-
     /**
-     * Return the authenticated user's profile.
-     *
      * GET /api/auth/me
      */
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => $this->userResource($request->user()),
+            'user' => UserApi::array($request->user()),
         ]);
     }
 
     /**
-     * Update the authenticated user's profile (consumer / any token user).
-     *
      * PUT /api/auth/profile
-     * Body: { name?, phone_number? }
      */
     public function updateProfile(Request $request): JsonResponse
     {
@@ -151,19 +160,32 @@ class AuthController extends Controller
                 'max:20',
                 Rule::unique('users', 'phone_number')->ignore($request->user()->id),
             ],
+            'fcm_token' => 'sometimes|nullable|string|min:20|max:512',
+            'platform' => ['sometimes', 'nullable', Rule::in(['android', 'ios'])],
+            'app' => ['sometimes', 'nullable', Rule::in(['consumer', 'business'])],
+            'firebase_project_id' => 'sometimes|nullable|string|max:64',
         ]);
 
-        $request->user()->update($validated);
+        $fcmToken = $validated['fcm_token'] ?? null;
+        unset($validated['fcm_token'], $validated['platform'], $validated['app'], $validated['firebase_project_id']);
+
+        $user = $request->user();
+        $user->update($validated);
+
+        if (is_string($fcmToken) && $fcmToken !== '') {
+            UserApi::persistFcmToken($user, $fcmToken, $request);
+        }
+
+        $user->refresh();
 
         return response()->json([
             'message' => 'Profile updated.',
-            'user' => $this->userResource($request->user()->fresh()),
+            'user' => UserApi::array($user),
+            'fcm_token' => $user->fcm_token,
         ]);
     }
 
-    /**
-     * Logout and revoke the current token.
-     *
+  /**
      * POST /api/auth/logout
      */
     public function logout(Request $request): JsonResponse
@@ -173,23 +195,6 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Logged out successfully.',
         ]);
-    }
-
-    // ─── Private helpers ─────────────────────────────────────────────────────────
-
-    /**
-     * Return a consistent user data shape across all endpoints.
-     */
-    private function userResource(User $user): array
-    {
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'phone_number' => $user->phone_number,
-            'role' => $user->role,
-            'created_at' => $user->created_at?->toDateTimeString(),
-        ];
     }
 
     private function tokenAbilityName(?string $role): string

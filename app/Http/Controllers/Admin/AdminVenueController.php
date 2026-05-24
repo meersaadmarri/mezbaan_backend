@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Hall;
+use App\Support\UserApi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +22,7 @@ class AdminVenueController extends Controller
     {
         $status = $request->query('status', 'all');
 
-        $query = Hall::query()->with(['owner:id,name,email,phone_number']);
+        $query = Hall::query()->with(['owner:'.UserApi::RELATION_SELECT]);
 
         if ($status !== 'all') {
             $query->where('status', $status);
@@ -45,7 +46,7 @@ class AdminVenueController extends Controller
     public function pendingApprovals(): JsonResponse
     {
         $halls = Hall::query()
-            ->with(['owner:id,name,email,phone_number'])
+            ->with(['owner:'.UserApi::RELATION_SELECT])
             ->where('status', 'pending')
             ->latest()
             ->get();
@@ -85,7 +86,7 @@ class AdminVenueController extends Controller
 
         return response()->json([
             'message' => 'Venue approved.',
-            'hall' => $hall->fresh()->load(['owner:id,name,email,phone_number']),
+            'hall' => $hall->fresh()->load(['owner:'.UserApi::RELATION_SELECT]),
         ]);
     }
 
@@ -108,7 +109,7 @@ class AdminVenueController extends Controller
 
         return response()->json([
             'message' => 'Venue declined.',
-            'hall' => $hall->fresh()->load(['owner:id,name,email,phone_number']),
+            'hall' => $hall->fresh()->load(['owner:'.UserApi::RELATION_SELECT]),
         ]);
     }
 
@@ -143,7 +144,7 @@ class AdminVenueController extends Controller
 
         return response()->json([
             'message' => 'Venue status updated.',
-            'hall' => $hall->fresh()->load(['owner:id,name,email,phone_number']),
+            'hall' => $hall->fresh()->load(['owner:'.UserApi::RELATION_SELECT]),
         ]);
     }
 
@@ -161,7 +162,7 @@ class AdminVenueController extends Controller
 
         return response()->json([
             'message' => 'Venue suspended and removed from public listings.',
-            'hall' => $hall->fresh()->load(['owner:id,name,email,phone_number']),
+            'hall' => $hall->fresh()->load(['owner:'.UserApi::RELATION_SELECT]),
         ]);
     }
 
@@ -186,7 +187,7 @@ class AdminVenueController extends Controller
 
         return response()->json([
             'message' => 'Venue is live again.',
-            'hall' => $hall->fresh()->load(['owner:id,name,email,phone_number']),
+            'hall' => $hall->fresh()->load(['owner:'.UserApi::RELATION_SELECT]),
         ]);
     }
 }

@@ -22,6 +22,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->environment('production')) {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
+
         // So `php artisan serve`'s inner `php -S` process inherits upload limits (see scripts/serve-mobile.sh + dev-php-ini.d).
         if (! in_array('PHP_INI_SCAN_DIR', ServeCommand::$passthroughVariables, true)) {
             ServeCommand::$passthroughVariables[] = 'PHP_INI_SCAN_DIR';

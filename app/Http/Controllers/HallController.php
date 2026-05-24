@@ -3,15 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Hall;
+use App\Services\VenueRegistrationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class HallController extends Controller
 {
+    public function __construct(
+        private readonly VenueRegistrationService $venueRegistration,
+    ) {}
     /**
      * List approved halls (consumer app — no auth).
      * GET /api/halls
@@ -246,61 +251,35 @@ class HallController extends Controller
             'photos' => 'nullable|array',
             'photos.*' => 'file|mimes:jpg,jpeg,png,webp|max:15360',
             'videos' => 'nullable|array',
-            // Android often reports video as application/octet-stream; mimes uses extension + guesser.
+            // Android often sends application/octet-stream; validate extension + size, not strict mime.
             // max is kilobytes (102400 = 100 MB). Ensure PHP upload_max_filesize/post_max_size allow this.
-            'videos.*' => 'file|mimes:mp4,mov,avi,webm,3gp,mkv,m4v|max:102400',
+            'videos.*' => [
+                'file',
+                'max:102400',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! $value instanceof UploadedFile || ! $value->isValid()) {
+                        return;
+                    }
+                    $ext = strtolower((string) ($value->getClientOriginalExtension() ?: $value->guessExtension() ?: ''));
+                    $allowed = ['mp4', 'mov', 'avi', 'webm', '3gp', 'mkv', 'm4v'];
+                    if (! in_array($ext, $allowed, true)) {
+                        $fail('Each venue video must use a known extension (.mp4, .mov, .webm, …).');
+
+                        return;
+                    }
+                    $mime = (string) $value->getMimeType();
+                    if (! str_starts_with($mime, 'video/') && $mime !== 'application/octet-stream') {
+                        $fail('Each venue video must be a video file (got '.$mime.').');
+                    }
+                },
+            ],
         ]);
 
-        $data = $validated;
-        $data['owner_id'] = $request->user()->id;
-        $data['status'] = 'pending';
-
-        unset($data['cnic'], $data['license'], $data['live_photo'], $data['photos'], $data['videos'], $data['event_types']);
-
-        $jsonFields = [
-            'managed_events', 'packages', 'selected_themes', 'stage_features',
-            'detailed_decor_options', 'climate_control', 'staff_gender',
-        ];
-        foreach ($jsonFields as $field) {
-            if (isset($data[$field]) && is_string($data[$field])) {
-                $decoded = json_decode($data[$field], true);
-                $data[$field] = json_last_error() === JSON_ERROR_NONE ? $decoded : null;
-            }
-        }
-
-        if ($request->hasFile('cnic')) {
-            $data['cnic_path'] = $request->file('cnic')->store('halls/docs', 'public');
-        }
-        if ($request->hasFile('license')) {
-            $data['license_path'] = $request->file('license')->store('halls/docs', 'public');
-        }
-        if ($request->hasFile('live_photo')) {
-            $data['live_venue_photo_path'] = $request->file('live_photo')->store('halls/photos', 'public');
-        }
-
-        $photoFiles = $this->gatherUploadedFiles($request, 'photos');
-        if ($photoFiles !== []) {
-            $photos = [];
-            foreach ($photoFiles as $photo) {
-                $photos[] = $photo->store('halls/photos', 'public');
-            }
-            $data['venue_photos'] = $photos;
-        }
-
-        $videoFiles = $this->gatherUploadedFiles($request, 'videos');
-        if ($videoFiles !== []) {
-            $videos = [];
-            foreach ($videoFiles as $video) {
-                $videos[] = $video->store('halls/videos', 'public');
-            }
-            $data['venue_videos'] = $videos;
-        }
-
-        $hall = Hall::create($data);
+        $hall = $this->venueRegistration->register($request->user(), $validated, $request);
 
         return response()->json([
             'message' => 'Venue registered successfully and pending approval.',
-            'hall' => $hall,
+            'hall' => $this->venueRegistration->registrationPayload($hall),
         ], 201);
     }
 

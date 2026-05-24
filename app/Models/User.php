@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\UserApi;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -20,6 +22,7 @@ class User extends Authenticatable
         'password',
         'phone_number',
         'role',
+        'fcm_token',
     ];
 
     /**
@@ -39,5 +42,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function toApiArray(): array
+    {
+        return UserApi::array($this);
+    }
+
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
     }
 }

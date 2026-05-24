@@ -6,6 +6,8 @@ use App\Models\Booking;
 use App\Models\Hall;
 use App\Models\Message;
 use App\Models\User;
+use App\Support\UserApi;
+use App\Services\ChatPushNotificationService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +16,9 @@ use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
+    public function __construct(
+        private readonly ChatPushNotificationService $chatPush,
+    ) {}
     /**
      * Customer: all bookings / chat threads (venue requests + formal bookings).
      * GET /api/bookings/mine
@@ -25,7 +30,8 @@ class BookingController extends Controller
         $bookings = Booking::query()
             ->where('customer_id', $user->id)
             ->with([
-                'hall:id,name,city,venue_photos,status,address',
+                'hall:id,name,city,venue_photos,status,address,owner_id',
+                'hall.owner',
             ])
             ->withCount([
                 'messages as unread_count' => function ($q) use ($user) {
@@ -37,7 +43,7 @@ class BookingController extends Controller
 
         $this->attachLatestMessages($bookings);
 
-        return response()->json(['bookings' => $bookings]);
+        return response()->json(['bookings' => $this->bookingsMinePayload($bookings)]);
     }
 
     /**
@@ -54,7 +60,7 @@ class BookingController extends Controller
             })
             ->with([
                 'hall:id,name,city,venue_photos,status,address',
-                'customer:id,name,email,phone_number',
+                'customer',
             ])
             ->withCount([
                 'messages as unread_count' => function ($q) use ($user) {
@@ -66,7 +72,7 @@ class BookingController extends Controller
 
         $this->attachLatestMessages($bookings);
 
-        return response()->json(['bookings' => $bookings]);
+        return response()->json(['bookings' => $this->bookingsPayload($bookings)]);
     }
 
     /**
@@ -110,13 +116,14 @@ class BookingController extends Controller
                     'customer_email' => $email,
                     'customer_phone' => $phone,
                 ]);
-                Message::create([
+                $msg = Message::create([
                     'booking_id' => $existing->id,
                     'sender_id' => $user->id,
                     'content' => $body,
                     'is_read' => false,
                 ]);
                 $existing->touch();
+                $this->chatPush->notifyNewMessage($msg, $existing);
 
                 return $existing->fresh();
             }
@@ -133,13 +140,14 @@ class BookingController extends Controller
                 'status' => 'inquiry',
             ]);
 
-            Message::create([
+            $msg = Message::create([
                 'booking_id' => $booking->id,
                 'sender_id' => $user->id,
                 'content' => $body,
                 'is_read' => false,
             ]);
             $booking->touch();
+            $this->chatPush->notifyNewMessage($msg, $booking);
 
             return $booking;
         });
@@ -231,6 +239,8 @@ class BookingController extends Controller
 
         $booking->touch();
 
+        $this->chatPush->notifyNewMessage($message, $booking);
+
         return response()->json([
             'message_id' => $message->id,
             'latest_id' => $message->id,
@@ -300,5 +310,64 @@ class BookingController extends Controller
         }
 
         abort(403, 'You cannot access this conversation.');
+    }
+
+    /**
+     * Ensure nested `customer` always includes `fcm_token` (null when unset).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function bookingsPayload(EloquentCollection $bookings): array
+    {
+        return $bookings->map(function (Booking $booking) {
+            $row = $booking->toArray();
+
+            if ($booking->customer_id === null) {
+                $row['customer'] = null;
+
+                return $row;
+            }
+
+            $customer = $booking->relationLoaded('customer')
+                ? $booking->customer
+                : null;
+
+            $row['customer'] = $customer !== null
+                ? UserApi::array($customer)
+                : [
+                    'id' => $booking->customer_id,
+                    'name' => $booking->customer_name,
+                    'email' => $booking->customer_email,
+                    'phone_number' => $booking->customer_phone,
+                    'role' => 'customer',
+                    'fcm_token' => null,
+                    'created_at' => null,
+                ];
+
+            return $row;
+        })->values()->all();
+    }
+
+    /**
+     * Customer bookings: ensure hall.owner includes fcm_token (null when unset).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function bookingsMinePayload(EloquentCollection $bookings): array
+    {
+        return $bookings->map(function (Booking $booking) {
+            $row = $booking->toArray();
+
+            if ($booking->relationLoaded('hall') && $booking->hall !== null) {
+                $hallRow = $booking->hall->toArray();
+                $owner = $booking->hall->relationLoaded('owner') ? $booking->hall->owner : null;
+                $hallRow['owner'] = $owner !== null
+                    ? UserApi::array($owner)
+                    : null;
+                $row['hall'] = $hallRow;
+            }
+
+            return $row;
+        })->values()->all();
     }
 }

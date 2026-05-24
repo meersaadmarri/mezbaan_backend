@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Support\UserApi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,7 +23,10 @@ class AdminBookingController extends Controller
         $perPage = min(500, max(1, (int) $request->query('per_page', 100)));
 
         $query = Booking::query()
-            ->with(['hall:id,name,city,status']);
+            ->with([
+                'hall:id,name,city,status',
+                'customer:'.UserApi::RELATION_SELECT,
+            ]);
 
         if ($status !== 'all') {
             $query->where('status', $status);

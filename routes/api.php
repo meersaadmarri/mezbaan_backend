@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminBookingController;
+use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminVenueController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\HallController;
 use Illuminate\Support\Facades\Route;
 
@@ -72,6 +74,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [HallController::class, 'update'])->whereNumber('id');
     });
 
+    // Push notification device tokens (FCM)
+    Route::prefix('notifications')->group(function () {
+        Route::post('/device-token', [DeviceTokenController::class, 'store']);
+        Route::delete('/device-token', [DeviceTokenController::class, 'destroy']);
+    });
+
     // Bookings & chat (REST — use polling or SSE; add Laravel Reverb later for WebSockets)
     Route::prefix('bookings')->group(function () {
         Route::get('/mine', [BookingController::class, 'mine']);
@@ -95,6 +103,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/venues/{id}/status', [AdminVenueController::class, 'updateStatus']);
 
         Route::get('/bookings', [AdminBookingController::class, 'index']);
+
+        Route::post('/notifications/promotional', [AdminNotificationController::class, 'sendPromotional']);
+        Route::get('/notifications/campaigns', [AdminNotificationController::class, 'indexCampaigns']);
+        Route::post('/notifications/campaigns', [AdminNotificationController::class, 'storeCampaign']);
     });
 });
 
